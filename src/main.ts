@@ -17,10 +17,12 @@ import { assert } from './utils/util';
     h.innerText = 'No adapter is available for WebGPU.';
     return;
   }
-  // console.log(adapter.limits.maxComputeWorkgroupStorageSize);
   
   const device = await adapter.requestDevice({
-    requiredLimits: { maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize },
+    requiredLimits: { 
+      maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
+      maxStorageBufferBindingSize: adapter.limits. maxStorageBufferBindingSize
+     },
   });
 
   const canvas = document.querySelector<HTMLCanvasElement>('#webgpu-canvas');
