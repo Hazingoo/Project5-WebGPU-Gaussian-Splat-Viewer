@@ -45,7 +45,7 @@ function create_ping_pong_buffer(adjusted_count: number, keysize: number, device
 const c_radix_log2 = 8;
 export const c_histogram_block_rows = 15;
 
-const C = {
+export const C = {
   histogram_sg_size: 32,
   histogram_wg_size: 256,
   rs_radix_log2: 8,

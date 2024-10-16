@@ -68,38 +68,55 @@ For editing the project, you will want to use [Visual Studio Code](https://code.
 WebGPU errors will appear in your browser's developer console (Ctrl + Shift + J for Chrome on Windows). Unlike some other graphics APIs, WebGPU error messages are often very helpful, especially if you've labeled your various pipeline components with meaningful names. Be sure to check the console whenever something isn't working correctly.
 
 ### Part 1: Understanding 3D Gaussian Point Cloud & Add MVP calculation
-
-To start off, read over the [paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) for some basic ideas. Although we don't focus on training part of the algorithm, it still knowledge you can learn for your good. Then read over point cloud renderer, add MVP calculation to the vertex shader. After that, you can see point cloud being rendered to screen. 
+- Read over the [3D Gaussian Splatting Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) to have a basic understanding. 
+- Then read over `point_cloud` renderer, add MVP calculation to the vertex shader. After that, you can see yellow point cloud rendered to screen. 
 
 ### Part 2: Gaussian Renderer
 
-Pipeline: 
-
+#### Gaussian Renderer Implementation: 
   - Loading 3D gaussian data into GPU (this part is done for you, see `PointCloud` in load.ts)
   - Preprocess 3D gaussian data
-    -  Do a simple view frustum culling to keep only visible gaussians (you may want to keep the bounding box to be slightly larger than actual frustum)
-    -  Compute 3D covariance based on rotation and scale, also user input gaussian multipler. (see [post](https://github.com/kwea123/gaussian_splatting_notes) on 1.1 section)
-    -  Compute 2D conic, maximum radius, and <b>maximum quad size in NDC</b> (see [post](https://github.com/kwea123/gaussian_splatting_notes) on 1.1 section)
-    - Store essential 2D gaussian data to later rasteriation pipeline
+    - Implement view frustum culling to remove non-visible Gaussians (make bounding box to be slightly larger to keep the edge gaussians)
+    - Compute 3D covariance based on rotation and scale, also user inputted gaussian multipler. (see [post](https://github.com/kwea123/gaussian_splatting_notes) on 1.1 section)
+    - Compute 2D conic, maximum radius, and <b>maximum quad size in NDC</b> (see [post](https://github.com/kwea123/gaussian_splatting_notes) on 1.1 section)
+    - Using spherical harmonics coeffiecients to evaluate the color of the gaussian from particular view direction (evaluation function is provided, see [post](https://beatthezombie.github.io/sh_post_1/)  ). 
+    - Store essential 2D gaussian data for later rasteriation pipeline
     - Add key_size, indices, and depth to sorter. 
   - Sort Gaussians based on depth
   - Render the 2D splat on quad utlizing indirect draw call (instance count from process step) in sorted order.
+    - vertex shader: reconstruct 2D quad vertices (NDC) from splat data, send conic and color information to fragment shader
+    - fragment shader: using conic matrix [see "Centered matrix equation"](https://en.wikipedia.org/wiki/Matrix_representation_of_conic_sections) to determine whether point is inside splat. The opacity should decade exponentially as it distant from center.
 
-Note: original paper do tile-based depth sorting for each tile and add on opacity till opacity is near 1.0, here we utiized the standard rasterization pipeline, so we render all of them all together. 
+#### Hints:
+- useful shader functions:
+  - `unpack2x16float`: all gaussian data is packed in f16, need to unpacked it in shader. 
+  - `pack2x16float`: pack you 2D gaussian data in f16 format
+  - `atomicAdd` : store indices in sorting buffer using thread-safe updates in compute shaders
+- Setting up pipeline:
+  - `device.queue.writeBuffer`: Remember to clean sort infos each frame.  
+  - `encoder.copyBufferToBuffer`: GPU buffer transfer data to other GPU buffer
+  - `blend`: using similar blending function as rendering semi-transparent texture to screen. 
+  - `depth`: similarly to semi-transparent texture, we should render gaussians back to front. 
 
-### Part 2: Extra Credit: Optimization
+### Part 2: Extra Credit: 
+
+#### Optimization: tile-based depth sorting 
 
 Follow the [paper](https://github.com/kwea123/gaussian_splatting_notes) implementation using tile-based depth sorting. Then composite the final image using compute shader. 
 
 ![Gaussian with Tile](./images/sorting2.webp)
 ![Gaussian with Tile](./images/sorting1.webp)
 
+#### Optimization: half-precision floating point calculation
+
+See the [WebGPU supported f16 function](https://webgpufundamentals.org/webgpu/lessons/webgpu-wgsl-function-reference.html), implement your compressed f16 compute shader for preprocess step. 
+
 ## Performance Analysis
 
 
 ## Base Code Walkthrough
 
-In general, you can search for comments containing "Task" to see the most important/useful parts of the base code.
+In general, you can search for comments containing "TODO" to see the most important/useful parts of the base code.
 
 ## README
 

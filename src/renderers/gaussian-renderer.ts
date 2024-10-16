@@ -1,16 +1,12 @@
 import { PointCloud } from '../utils/load';
 import preprocessWGSL from '../shaders/preprocess.wgsl';
 import renderWGSL from '../shaders/gaussian.wgsl';
-import { get_sorter,c_histogram_block_rows } from '../sort/sort';
+import { get_sorter,c_histogram_block_rows,C } from '../sort/sort';
 import { Renderer } from './renderer';
 
 export interface GaussianRenderer extends Renderer {
 
 }
-
-const c_size_render_settings_buffer = Uint32Array.BYTES_PER_ELEMENT;
-const c_workgroup_size_preprocess = 256;
-const c_size_2d_splat = 24;
 
 // Utility to create GPU buffers
 const createBuffer = (
@@ -50,7 +46,7 @@ export default function get_renderer(
       module: device.createShaderModule({ code: preprocessWGSL }),
       entryPoint: 'preprocess',
       constants: {
-        workgroupSize: c_workgroup_size_preprocess,
+        workgroupSize: C.histogram_wg_size,
         sortKeyPerThread: c_histogram_block_rows,
       },
     },
@@ -67,9 +63,6 @@ export default function get_renderer(
     ],
   });
 
-  const preprocess_workgroup_count = Math.ceil(
-    pc.num_points / c_workgroup_size_preprocess
-  );
 
   // ===============================================
   //    Create Render Pipeline and Bind Groups
@@ -79,23 +72,13 @@ export default function get_renderer(
   // ===============================================
   //    Command Encoder Functions
   // ===============================================
-  const preprocess = (encoder: GPUCommandEncoder) => {
-    device.queue.writeBuffer(sorter.sort_info_buffer, 0, nulling_data);
-    device.queue.writeBuffer(sorter.sort_dispatch_indirect_buffer, 0, nulling_data);
-
-    const pass = encoder.beginComputePass({ label: 'preprocess' });
-    pass.setPipeline(preprocess_pipeline);
-    pass.setBindGroup(2, sort_bind_group);
-    pass.dispatchWorkgroups(preprocess_workgroup_count);
-    pass.end();
-  };
+  
 
   // ===============================================
   //    Return Render Object
   // ===============================================
   return {
     frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
-      preprocess(encoder);
       sorter.sort(encoder);
     },
     camera_buffer,

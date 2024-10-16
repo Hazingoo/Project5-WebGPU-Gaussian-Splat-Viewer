@@ -37,9 +37,10 @@ export async function load(file: File, device: GPUDevice) {
   const nCoeffsPerColor = nRestCoeffs / 3;
   const sh_deg = Math.sqrt(nCoeffsPerColor + 1) - 1;
   const num_coefs = nShCoeffs(sh_deg);
+  const max_num_coefs = 16;
 
   const c_size_sh_coef = 
-    3 * num_coefs * c_size_float // 3 channels (RGB) x 16 coefs
+    3 * max_num_coefs * c_size_float // 3 channels (RGB) x 16 coefs
   ;
 
   // figure out the order in which spherical harmonics should be read
@@ -83,7 +84,7 @@ export async function load(file: File, device: GPUDevice) {
     readOffset = newReadOffset;
 
     const o = i * (c_size_3d_gaussian / c_size_float);
-    const output_offset = i * num_coefs * 3;
+    const output_offset = i * max_num_coefs * 3;
     
     for (let order = 0; order < num_coefs; ++order) {
         const order_offset = order * 3;
@@ -113,6 +114,7 @@ export async function load(file: File, device: GPUDevice) {
   console.log("return result!");
   return {
     num_points: num_points,
+    sh_deg: sh_deg,
     gaussian_3d_buffer,
     sh_buffer,
   };

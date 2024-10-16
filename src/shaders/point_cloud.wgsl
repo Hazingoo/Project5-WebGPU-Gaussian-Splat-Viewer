@@ -34,7 +34,7 @@ fn vs_main(
     let b = unpack2x16float(vertex.pos_opacity[1]);
     let pos = vec4<f32>(a.x, a.y, b.x, 1.);
 
-    // Task 0: MVP calculations
+    // TODO: MVP calculations
     out.position = pos;
 
     return out;
