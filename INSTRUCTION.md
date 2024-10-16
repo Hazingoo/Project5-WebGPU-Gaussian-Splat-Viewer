@@ -12,7 +12,6 @@ In this project, you will implement the 3D Gaussian Splat Viewer. You are given 
   - `shaders/` contains the WGSL files that are interpreted as shader programs at runtime. 
   - `camera/` includes camera controls, camera file loading.
   - `utils/` includes PLY file loading, utility functions for debugging. 
-- `public/scenes/` some sample pretrained gaussian files.
 
 ## Running the code
 
@@ -117,6 +116,38 @@ See the [WebGPU supported f16 function](https://webgpufundamentals.org/webgpu/le
 ## Base Code Walkthrough
 
 In general, you can search for comments containing "TODO" to see the most important/useful parts of the base code.
+
+#### `renderers/`
+Defines the different renderers for Gaussian splats and point clouds.
+- **`gaussian-renderer.ts`**: Implements the renderer for Gaussian splats.
+- **`point-cloud-renderer.ts`**: Implements the renderer for point clouds.
+- **`renderer.ts`**: Abstract base render app for common renderer functionality, as well as GUI.
+
+#### `shaders/`
+Contains WGSL shader programs that run on the GPU for rendering.
+- **`gaussian.wgsl`**: Vertex and fragment shaders for Gaussian splat rendering.
+- **`point_cloud.wgsl`**: Shaders for rendering point cloud data.
+- **`preprocess.wgsl`**: Preprocesses Gaussian data for rendering.
+
+#### `camera/`
+Manages camera controls and view/projection transformations.
+- **`camera.ts`**: Handles the camera's view and projection matrices.
+- **`camera-control.ts`**: Implements user input handling for camera movement.
+
+#### `utils/`
+Includes PLY file loading and utility functions for debugging and GPU management.
+- **`load.ts`**: Loads Gaussian PLY data, and sets up WebGPU buffers.
+- **`plyreader.ts`**: Parses PLY files to extract point cloud data.
+- **`simple-console.ts`**: Provides basic logging and debugging utilities.
+- **`util.ts`**: Provides utility functions for assertions, error handling, and alignment operations.
+
+#### `sort/`
+Handles sorting operations for rendering transparency in Gaussian splats.
+- **`sort.ts`**: Interfaces with the radix sort WGSL shader to sort Gaussian splats by depth.
+- **`radix_sort.wgsl`**: Implements parallel radix sort on the GPU.
+
+#### `main.ts`
+The entry point of the project, responsible for initializing WebGPU.
 
 ## README
 
