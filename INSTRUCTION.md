@@ -68,11 +68,11 @@ For editing the project, you will want to use [Visual Studio Code](https://code.
 
 WebGPU errors will appear in your browser's developer console (Ctrl + Shift + J for Chrome on Windows). Unlike some other graphics APIs, WebGPU error messages are often very helpful, especially if you've labeled your various pipeline components with meaningful names. Be sure to check the console whenever something isn't working correctly.
 
-### Part 1: Understanding 3D Gaussian Point Cloud & Add MVP calculation
+### Part 1: Understanding 3D Gaussian Point Cloud & Add MVP calculation (10pts)
 - Read over the [3D Gaussian Splatting Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) to have a basic understanding. 
 - Then read over `point_cloud` renderer, add MVP calculation to the vertex shader. After that, you can see yellow point cloud rendered to screen. 
 
-### Part 2: Gaussian Renderer
+### Part 2: Gaussian Renderer (80pts total)(50pts(preprocess)+30pts(renderer))
 
 #### Gaussian Renderer Implementation: 
   - Loading 3D gaussian data into GPU (this part is done for you, see `PointCloud` in load.ts)
@@ -101,19 +101,24 @@ WebGPU errors will appear in your browser's developer console (Ctrl + Shift + J 
 
 ### Part 2: Extra Credit: 
 
-#### Optimization: tile-based depth sorting 
+#### Optimization: tile-based depth sorting (20pts)
 
 Follow the [paper](https://github.com/kwea123/gaussian_splatting_notes) implementation using tile-based depth sorting. Then composite the final image using compute shader. 
 
 ![Gaussian with Tile](./images/sorting2.webp)
 ![Gaussian with Tile](./images/sorting1.webp)
 
-#### Optimization: half-precision floating point calculation
+#### Optimization: half-precision floating point calculation (10pts)
 
 See the [WebGPU supported f16 function](https://webgpufundamentals.org/webgpu/lessons/webgpu-wgsl-function-reference.html), implement your compressed f16 compute shader for preprocess step. 
 
-## Performance Analysis
+## Performance Analysis (10pts)
 
+#### Answer these questions:
+- Compare your results from point-cloud and gaussian renderer, what are the differences?
+- For gaussian renderer, how does changing the workgroup-size affect performance? Why do you think this is?
+- Does view-frustum culling give performance improvement? Why do you think this is? 
+- Does number of guassians affect performance?  Why do you think this is? 
 
 ## Base Code Walkthrough
 
