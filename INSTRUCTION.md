@@ -1,7 +1,7 @@
 WebGPU WebGPU Gaussian Splat Viewer Instructions
 ==========================================================
 
-**This is due Sunday, October 29th at 11:59 PM.**
+**This is due Tuesday, October 29th at 11:59 PM.**
 
 In this project, you will implement the 3D Gaussian Splat Viewer. You are given some pretrained Gaussian files and basic loading function, as well as some GUIs including file loading and renderer switch.
 
