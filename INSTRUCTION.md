@@ -89,6 +89,9 @@ WebGPU errors will appear in your browser's developer console (Ctrl + Shift + J 
     - fragment shader: using conic matrix [see "Centered matrix equation"](https://en.wikipedia.org/wiki/Matrix_representation_of_conic_sections) to determine whether point is inside splat. The opacity should decade exponentially as it distant from center.
 
 #### Hints:
+- scene file information:
+  - `opacity`: use sigmoid function to bring back maximum opacity
+  - `scale` (log space): use exponential function to bring back actual scale
 - useful shader functions:
   - `unpack2x16float`: all gaussian data is packed in f16, need to unpacked it in shader. 
   - `pack2x16float`: pack you 2D gaussian data in f16 format
