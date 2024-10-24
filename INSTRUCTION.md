@@ -90,7 +90,7 @@ WebGPU errors will appear in your browser's developer console (Ctrl + Shift + J 
 
 #### Implementation Hints:
 - scene file information:
-  - `opacity`: use ![sigmoid](https://github.com/graphdeco-inria/diff-gaussian-rasterization/blob/59f5f77e3ddbac3ed9db93ec2cfe99ed6c5d121d/cuda_rasterizer/auxiliary.h#L134) function to bring back maximum opacity
+  - `opacity`: use [sigmoid](https://github.com/graphdeco-inria/diff-gaussian-rasterization/blob/59f5f77e3ddbac3ed9db93ec2cfe99ed6c5d121d/cuda_rasterizer/auxiliary.h#L134) function to bring back maximum opacity
   - `scale` (log space): use exponential function to bring back actual scale
 - useful shader functions:
   - `unpack2x16float`: all gaussian data is packed in f16, need to unpacked it in shader. 
