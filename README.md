@@ -25,7 +25,7 @@ to implementation work. Complete the implementation early to leave time!
 ### Credits
 
 - [Vite](https://vitejs.dev/)
-- [loaders.gl](https://loaders.gl/)
-- [dat.GUI](https://github.com/dataarts/dat.gui)
+- [tweakpane](https://tweakpane.github.io/docs//v3/monitor-bindings/)
 - [stats.js](https://github.com/mrdoob/stats.js)
 - [wgpu-matrix](https://github.com/greggman/wgpu-matrix)
+- Special Thanks to: Shrek Shao (Google WebGPU team) & [Differential Guassian Renderer](https://github.com/graphdeco-inria/diff-gaussian-rasterization)

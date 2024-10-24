@@ -74,7 +74,7 @@ WebGPU errors will appear in your browser's developer console (Ctrl + Shift + J 
 
 ### Part 2: Gaussian Renderer (80pts total)(50pts(preprocess)+30pts(renderer))
 
-#### Gaussian Renderer Implementation: 
+#### Gaussian Renderer Pipeline Overview: 
   - Loading 3D gaussian data into GPU (this part is done for you, see `PointCloud` in load.ts)
   - Preprocess 3D gaussian data
     - Implement view frustum culling to remove non-visible Gaussians (make bounding box to be slightly larger to keep the edge gaussians)
@@ -86,23 +86,61 @@ WebGPU errors will appear in your browser's developer console (Ctrl + Shift + J 
   - Sort Gaussians based on depth
   - Render the 2D splat on quad utlizing indirect draw call (instance count from process step) in sorted order.
     - vertex shader: reconstruct 2D quad vertices (NDC) from splat data, send conic and color information to fragment shader
-    - fragment shader: using conic matrix [see "Centered matrix equation"](https://en.wikipedia.org/wiki/Matrix_representation_of_conic_sections) to determine whether point is inside splat. The opacity should decade exponentially as it distant from center.
+    - fragment shader: using conic matrix [see "Centered matrix equation"](https://en.wikipedia.org/wiki/Matrix_representation_of_conic_sections) and [CUDA implementation](https://github.com/graphdeco-inria/diff-gaussian-rasterization/blob/main/cuda_rasterizer/forward.cu#L330) to determine whether point is inside splat. The opacity should decade exponentially as it distant from center.
 
-#### Hints:
+#### Implementation Hints:
 - scene file information:
-  - `opacity`: use sigmoid function to bring back maximum opacity
+  - `opacity`: use ![sigmoid](https://github.com/graphdeco-inria/diff-gaussian-rasterization/blob/59f5f77e3ddbac3ed9db93ec2cfe99ed6c5d121d/cuda_rasterizer/auxiliary.h#L134) function to bring back maximum opacity
   - `scale` (log space): use exponential function to bring back actual scale
 - useful shader functions:
   - `unpack2x16float`: all gaussian data is packed in f16, need to unpacked it in shader. 
   - `pack2x16float`: pack you 2D gaussian data in f16 format
   - `atomicAdd` : store indices in sorting buffer using thread-safe updates in compute shaders
+  - `arrayLength`: remember to check thread idx is within the numbers of gaussians
 - Setting up pipeline:
   - `device.queue.writeBuffer`: Remember to clean sort infos each frame.  
   - `encoder.copyBufferToBuffer`: GPU buffer transfer data to other GPU buffer
   - `blend`: using similar blending function as rendering semi-transparent texture to screen. 
   - `depth`: similarly to semi-transparent texture, we should render gaussians back to front. 
 
-### Part 2: Extra Credit: 
+#### <b>Implementation Step Recommendation:</b>
+
+<b>Recommedation test scene:</b> bonsai_30000.ply or bicycle_30000.cleaned.ply
+
+<b>Indirect Drawing Setup Suggestions: </b>
+
+Before working on the preprocessing compute pipeline, you should first set up the indirect rendering pipeline that replicates the point cloud rendering you did in part 1. The recommended workflow is as follows:
+
+1. Set up the indirect draw buffer and the render pipeline, and render pc.num_points number of quads (with smaller size such as 0.01 x 0.01) on the screen.
+2. Finish the compute pipeline by binding the correct buffers. In the preprocess shader, transform the Gaussian points from world space to NDC space and stored data in Splat (similar to point cloud renderer). In the render pipeline, read from this Splat buffer to determine the position for drawing the quad. 
+3. Now, implement a simple view-frustum culling (bounding box of 1.2x screen size is recommended). Instead of drawing pc.num_points quads through the hard-coded indirect buffer, use `atomicAdd` on `sort_infos.keys_size` to determine how many quads to draw. After the preprocess shader, use `sort_infos.keys_size` to update the indirect draw buffer's instance count. Now the total number of quads to render is determined by the preprocess shader.
+4. The final step for setup is to bind the render settings as a buffer, as declared in the shader. The Gaussian scaling member variable should be adjustable on the host side using a scroll bar (see in `renderer.ts`).
+
+To test whether the buffer is working, use the Gaussian scaling member to influence the quad size, allowing you to adjust the size of the quads with the scroll bar. Also, be careful that complier might optimize away shader binding buffer if you do not actually use it in shader functions. 
+
+<b>Preprocess Compute Setup Suggestions: </b>
+
+Now, implement the computation of the 3D covariance, 2D covariance, and finally the radius, as detailed in the post links provided above. After computing the radius, use it to determine the quad size. You can load `bicycle_30000.cleaned.ply` (default camera) and compare it with the provided image below:
+
+![quad_white](./images/quad_white.png)
+
+After computing the radius, you can implement sorting by specifying `sort_depths` and `sort_indices` for each visible Gaussian. Also, remember to use `atomicAdd` on `sort_dispatch.dispatch_x` every time the visible Gaussian count exceeds the total number of sorting threads you will dispatch. To visualize the sorting result, assign each quad a color determined by its size, for example, `(width, height, 0.0, 1.0)` as the RGBA. 
+
+![quad_green](./images/quad_green.png)
+
+Then, bind the `sh_buffer` created in `load.ts` to the preprocess pipeline. Using this buffer, you can complete the `sh_coef` function, which reads a color from the sh_buffer given its index. With this function implemented, the `computeColorFromSH` function will be functional, allowing you to call it to acquire the color of each Gaussian. Pass the color from the preprocess shader to the rendering shaders to colorize each quad. As a result, you should see the following:
+
+![quad_color](./images/quad_color.png)
+
+<b>Final Render Implementation Suggestions: </b>
+
+Finally, enable `alpha` blending in the render pipeline. In the fragment shader, use a conic matrix to determine whether a point is inside a splat, and compute the opacity to update each fragment's color. There are multiple ways to achieve the final result, but here are some milestone images for you to compare.
+
+To determine whether a point is inside a splat, you need to compute the offset from the fragment position to the center of the quad in pixel space, with the x-coordinate reversed. To verify that your distance offset is computed correctly, set the color to `(d.x, d.y, 0.0, 1.0)`; you should see the following image:
+
+![quad_pixeldiff](./images/quad_pixeldiff.png)
+
+### Part 3: Extra Credit: 
 
 #### Optimization: tile-based depth sorting (20pts)
 
