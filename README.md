@@ -1,6 +1,6 @@
 # Project5-WebGPU-Gaussian-Splat-Viewer
 
-**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 4**
+**University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 5**
 
 * (TODO) YOUR NAME HERE
 * Tested on: (TODO) **Google Chrome 222.2** on
