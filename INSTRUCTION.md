@@ -13,7 +13,7 @@ In this project, you will implement the 3D Gaussian Splat Viewer. You are given 
   - `camera/` includes camera controls, camera file loading.
   - `utils/` includes PLY file loading, utility functions for debugging. 
 
-<b>Scene Files: </b> download scene files from [drive](https://drive.google.com/drive/folders/1UbcFvkwZhcdnhAlpua7n-UUjxDaeiYJC?usp=sharing).
+<b>Scene Files: </b> download scene files from [drive](https://drive.google.com/drive/folders/1Fz0QhyDU12JTsl2e7umGi5iy_V9drrIW?usp=sharing).
 
 ## Running the code
 
