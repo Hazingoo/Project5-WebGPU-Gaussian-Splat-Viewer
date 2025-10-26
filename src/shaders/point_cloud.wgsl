@@ -34,8 +34,9 @@ fn vs_main(
     let b = unpack2x16float(vertex.pos_opacity[1]);
     let pos = vec4<f32>(a.x, a.y, b.x, 1.);
 
-    // TODO: MVP calculations
-    out.position = pos;
+    // transform from world space to clip space
+    let view_pos = camera.view * pos;
+    out.position = camera.proj * view_pos;
 
     return out;
 }
