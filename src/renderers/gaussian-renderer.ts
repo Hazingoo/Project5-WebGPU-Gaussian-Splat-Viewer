@@ -42,7 +42,7 @@ export default function get_renderer(
         'indirect draw buffer',
         16, // 4 x u32 = 16 bytes
         GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        new Uint32Array([6, pc.num_points, 0, 0]) // 6 vertices per quad, num_points instances
+        new Uint32Array([6, 0, 0, 0]) // 6 vertices per quad, 0 instance
     );
 
     // Splat buffer: stores processed 2D gaussian data from compute shader
@@ -179,6 +179,13 @@ export default function get_renderer(
         const workgroup_count = Math.ceil(pc.num_points / workgroup_size);
         pass.dispatchWorkgroups(workgroup_count);
         pass.end();
+
+        // Copy visible count from sort_infos.keys_size to indirect draw buffer's instance count
+        encoder.copyBufferToBuffer(
+            sorter.sort_info_buffer, 0,  // source: keys_size at offset 0
+            indirect_draw_buffer, 4,      // destination: instanceCount at offset 4
+            4                              // size: 4 bytes (one u32)
+        );
     };
 
     const render = (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {

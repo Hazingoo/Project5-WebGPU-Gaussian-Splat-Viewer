@@ -139,9 +139,19 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_clip = camera.proj * pos_view;
     let pos_ndc = pos_clip.xy / pos_clip.w;
     
+    // View-frustum culling 
+    let culling_bounds = 1.2;
+    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || pos_clip.w <= 0.0) {
+        // Outside frustum, skip this Gaussian
+        return;
+    }
+    
     // Store in splat buffer
     splats[idx].xy_x = pack2x16float(pos_ndc);
     splats[idx].xy_y = 0u; // Unused for now
+    
+    // Atomically increment the count of visible Gaussians
+    let visible_idx = atomicAdd(&sort_infos.keys_size, 1u);
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
