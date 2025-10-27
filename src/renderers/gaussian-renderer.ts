@@ -5,7 +5,7 @@ import { get_sorter, c_histogram_block_rows, C } from '../sort/sort';
 import { Renderer } from './renderer';
 
 export interface GaussianRenderer extends Renderer {
-
+    updateGaussianScaling: (scaling: number) => void;
 }
 
 // Utility to create GPU buffers
@@ -53,6 +53,14 @@ export default function get_renderer(
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
 
+    const render_settings_buffer = createBuffer(
+        device,
+        'render settings',
+        8,
+        GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        new Float32Array([1.0, pc.sh_deg])
+    );
+
     // ===============================================
     //    Create Compute Pipeline and Bind Groups
     // ===============================================
@@ -74,9 +82,7 @@ export default function get_renderer(
         layout: preprocess_pipeline.getBindGroupLayout(2),
         entries: [
             { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
-            { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
-            { binding: 2, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
-            { binding: 3, resource: { buffer: sorter.sort_dispatch_indirect_buffer } },
+
         ],
     });
 
@@ -138,16 +144,14 @@ export default function get_renderer(
         },
     });
 
-    const render_camera_bind_group = device.createBindGroup({
-        label: 'render camera',
-        layout: render_pipeline.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: camera_buffer } }],
-    });
 
     const render_splat_bind_group = device.createBindGroup({
         label: 'render splats',
-        layout: render_pipeline.getBindGroupLayout(1),
-        entries: [{ binding: 0, resource: { buffer: splat_buffer } }],
+        layout: render_pipeline.getBindGroupLayout(0), // Changed from 1 to 0
+        entries: [
+            { binding: 0, resource: { buffer: splat_buffer } },
+            { binding: 1, resource: { buffer: render_settings_buffer } },
+        ],
     });
 
     // Create depth texture for proper rendering order
@@ -217,8 +221,8 @@ export default function get_renderer(
         });
 
         pass.setPipeline(render_pipeline);
-        pass.setBindGroup(0, render_camera_bind_group);
-        pass.setBindGroup(1, render_splat_bind_group);
+
+        pass.setBindGroup(0, render_splat_bind_group);
 
         // Use indirect draw 
         pass.drawIndirect(indirect_draw_buffer, 0);
@@ -235,5 +239,12 @@ export default function get_renderer(
             render(encoder, texture_view);
         },
         camera_buffer,
+        updateGaussianScaling: (scaling: number) => {
+            device.queue.writeBuffer(
+                render_settings_buffer,
+                0,
+                new Float32Array([scaling])
+            );
+        },
     };
 }

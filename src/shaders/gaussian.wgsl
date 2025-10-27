@@ -1,12 +1,3 @@
-struct CameraUniforms {
-    view: mat4x4<f32>,
-    view_inv: mat4x4<f32>,
-    proj: mat4x4<f32>,
-    proj_inv: mat4x4<f32>,
-    viewport: vec2<f32>,
-    focal: vec2<f32>
-};
-
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     //TODO: information passed from vertex shader to fragment shader
@@ -18,11 +9,16 @@ struct Splat {
     xy_y: u32,  // packed f16: unused for now
 };
 
-@group(0) @binding(0)
-var<uniform> camera: CameraUniforms;
+struct RenderSettings {
+    gaussian_scaling: f32,
+    sh_deg: f32,
+};
 
-@group(1) @binding(0)
+@group(0) @binding(0)
 var<storage, read> splats: array<Splat>;
+
+@group(0) @binding(1)
+var<uniform> render_settings: RenderSettings;
 
 @vertex
 fn vs_main(
@@ -35,8 +31,8 @@ fn vs_main(
     let splat = splats[instance_idx];
     let center_ndc = unpack2x16float(splat.xy_x);
     
-    // Define a small quad 
-    let quad_size = vec2<f32>(0.01, 0.01);
+    // Define a small quad, scaled by gaussian_scaling
+    let quad_size = vec2<f32>(0.01, 0.01) * render_settings.gaussian_scaling;
     
     // Generate quad vertices 
     // Triangle 1: 0,1,2  Triangle 2: 0,2,3
