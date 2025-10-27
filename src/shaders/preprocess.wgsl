@@ -56,10 +56,21 @@ struct Gaussian {
 };
 
 struct Splat {
-    //TODO: store information for 2D splat rendering
+    xy_x: u32,  
+    xy_y: u32,  // unused for now
 };
 
-//TODO: bind your data here
+// Bind group 0: Camera
+@group(0) @binding(0)
+var<uniform> camera: CameraUniforms;
+
+// Bind group 1: Gaussian data
+@group(1) @binding(0)
+var<storage, read> gaussians: array<Gaussian>;
+@group(1) @binding(1)
+var<storage, read_write> splats: array<Splat>;
+
+// Bind group 2: Sort data
 @group(2) @binding(0)
 var<storage, read_write> sort_infos: SortInfos;
 @group(2) @binding(1)
@@ -111,7 +122,26 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
-    //TODO: set up pipeline as described in instruction
+    
+    // Check bounds
+    if (idx >= arrayLength(&gaussians)) {
+        return;
+    }
+    
+    // Read gaussian data
+    let gaussian = gaussians[idx];
+    let a = unpack2x16float(gaussian.pos_opacity[0]);
+    let b = unpack2x16float(gaussian.pos_opacity[1]);
+    let pos_world = vec4<f32>(a.x, a.y, b.x, 1.0);
+    
+    // Transform to NDC space 
+    let pos_view = camera.view * pos_world;
+    let pos_clip = camera.proj * pos_view;
+    let pos_ndc = pos_clip.xy / pos_clip.w;
+    
+    // Store in splat buffer
+    splats[idx].xy_x = pack2x16float(pos_ndc);
+    splats[idx].xy_y = 0u; // Unused for now
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
