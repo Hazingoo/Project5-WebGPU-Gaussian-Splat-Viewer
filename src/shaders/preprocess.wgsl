@@ -57,9 +57,7 @@ struct Gaussian {
 
 struct Splat {
     xy_x: u32,        
-    xy_y: u32,        
-    color: u32,       
-    color_ba: u32,    
+    xy_y: u32,       
 };
 
 // Bind group 0: Camera
@@ -77,15 +75,12 @@ var<uniform> render_settings: RenderSettings;
 // Bind group 2: Sort data
 @group(2) @binding(0)
 var<storage, read_write> sort_infos: SortInfos;
-
 @group(2) @binding(1)
-var<storage, read_write> sort_dispatch: DispatchIndirect;
-
+var<storage, read_write> sort_depths : array<u32>;
 @group(2) @binding(2)
-var<storage, read_write> sort_depths: array<u32>;
-
+var<storage, read_write> sort_indices : array<u32>;
 @group(2) @binding(3)
-var<storage, read_write> sort_indices: array<u32>;
+var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
@@ -296,31 +291,19 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // Quad size is 2 * radius (diameter)
     let quad_size = radius_ndc * 2.0;
     
-    // Color visualization based on quad size 
-    // Normalize quad size for visualization 
-    let color = vec4<f32>(
-        clamp(quad_size.x * 10.0, 0.0, 1.0),  // red channel
-        clamp(quad_size.y * 10.0, 0.0, 1.0),  // green channel
-        0.0,                                    // blue channel
-        1.0                                     // alpha channel
-    );
-    
     // Store in splat buffer
     splats[idx].xy_x = pack2x16float(pos_ndc);
     splats[idx].xy_y = pack2x16float(quad_size);
-    splats[idx].color = pack2x16float(color.xy);
-    splats[idx].color_ba = pack2x16float(color.zw);
-    
-    // Atomically increment the count of visible Gaussians
+
     let visible_idx = atomicAdd(&sort_infos.keys_size, 1u);
 
-    // Store depth and index for sorting
-    let depth_uint = bitcast<u32>(-pos_view.z);
-    sort_depths[visible_idx] = depth_uint;
+    let depth_norm = pos_clip.z / pos_clip.w; 
+    sort_depths[visible_idx] = bitcast<u32>(depth_norm);
     sort_indices[visible_idx] = idx;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
-    if ((visible_idx + 1u) % keys_per_dispatch == 0u) {
+    let new_count = visible_idx + 1u;
+    if (new_count % keys_per_dispatch == 0u) {
         atomicAdd(&sort_dispatch.dispatch_x, 1u);
     }
 }

@@ -49,7 +49,7 @@ export default function get_renderer(
     const splat_buffer = createBuffer(
         device,
         'splat buffer',
-        pc.num_points * 16, // 16 bytes per splat (4 u32: xy_x, xy_y, color, color_ba)
+        pc.num_points * 32, // 32 bytes per splat (8 floats: pos xy, color rgb, conic abc)
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
 
@@ -82,9 +82,9 @@ export default function get_renderer(
         layout: preprocess_pipeline.getBindGroupLayout(2),
         entries: [
             { binding: 0, resource: { buffer: sorter.sort_info_buffer } },
-            { binding: 1, resource: { buffer: sorter.sort_dispatch_indirect_buffer } },
-            { binding: 2, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
-            { binding: 3, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
+            { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_depths_buffer } },
+            { binding: 2, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
+            { binding: 3, resource: { buffer: sorter.sort_dispatch_indirect_buffer } },
         ],
     });
 
@@ -153,7 +153,6 @@ export default function get_renderer(
         layout: render_pipeline.getBindGroupLayout(0),
         entries: [
             { binding: 0, resource: { buffer: splat_buffer } },
-            { binding: 1, resource: { buffer: sorter.ping_pong[1].sort_indices_buffer } },
         ],
     });
 
