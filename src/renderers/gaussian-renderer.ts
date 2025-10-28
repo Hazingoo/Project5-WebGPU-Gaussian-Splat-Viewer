@@ -153,7 +153,7 @@ export default function get_renderer(
         layout: render_pipeline.getBindGroupLayout(0),
         entries: [
             { binding: 0, resource: { buffer: splat_buffer } },
-            { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
+            { binding: 1, resource: { buffer: sorter.ping_pong[1].sort_indices_buffer } },
         ],
     });
 

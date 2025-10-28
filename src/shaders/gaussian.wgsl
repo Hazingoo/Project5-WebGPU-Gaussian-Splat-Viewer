@@ -4,14 +4,15 @@ struct VertexOutput {
 };
 
 struct Splat {
-    xy_x: u32,     // xy position 
-    xy_y: u32,     // quad size 
+    xy_x: u32,     // packed f16: xy position (x, y) in NDC
+    xy_y: u32,     // packed f16: quad size (width, height) in NDC
     color: u32,    // packed f16: color (r, g) for visualization
     color_ba: u32, // packed f16: color (b, a) for visualization
 };
 
 @group(0) @binding(0)
 var<storage, read> splats: array<Splat>;
+
 @group(0) @binding(1)
 var<storage, read> sorted_indices: array<u32>;
 
@@ -22,7 +23,7 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
     
-    // Read index from sorted order, then splat data
+    // Read splat data via sorted order
     let sorted_idx = sorted_indices[instance_idx];
     let splat = splats[sorted_idx];
     let center_ndc = unpack2x16float(splat.xy_x);
@@ -43,6 +44,7 @@ fn vs_main(
     let pos_ndc = center_ndc + offset * quad_size;
     out.position = vec4<f32>(pos_ndc, 0.0, 1.0);
     
+    // Unpack color from splat
     let color_rg = unpack2x16float(splat.color);
     let color_ba = unpack2x16float(splat.color_ba);
     out.color = vec4<f32>(color_rg.x, color_rg.y, color_ba.x, color_ba.y);

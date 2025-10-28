@@ -56,10 +56,10 @@ struct Gaussian {
 };
 
 struct Splat {
-    xy_x: u32,        // position 
-    xy_y: u32,        // quad size
-    color: u32,       // color (r, g) 
-    color_ba: u32,    // color (b, a) 
+    xy_x: u32,        
+    xy_y: u32,        
+    color: u32,       
+    color_ba: u32,    
 };
 
 // Bind group 0: Camera
@@ -286,10 +286,6 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // Compute radius in pixels
     let radius_pixels = compute_radius(cov2d);
     
-    if (radius_pixels > 100.0 || radius_pixels < 0.5) {
-        return;
-    }
-    
     // Convert radius to NDC space 
     // NDC is [-1, 1], viewport is in pixels
     let radius_ndc = vec2<f32>(
@@ -300,31 +296,30 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // Quad size is 2 * radius (diameter)
     let quad_size = radius_ndc * 2.0;
     
+    // Color visualization based on quad size 
     // Normalize quad size for visualization 
     let color = vec4<f32>(
         clamp(quad_size.x * 10.0, 0.0, 1.0),  // red channel
         clamp(quad_size.y * 10.0, 0.0, 1.0),  // green channel
-        0.0,                                  // blue channel
-        1.0                                   // alpha channel
+        0.0,                                    // blue channel
+        1.0                                     // alpha channel
     );
     
-    // Atomically get the packed index for visible splats
+    // Store in splat buffer
+    splats[idx].xy_x = pack2x16float(pos_ndc);
+    splats[idx].xy_y = pack2x16float(quad_size);
+    splats[idx].color = pack2x16float(color.xy);
+    splats[idx].color_ba = pack2x16float(color.zw);
+    
+    // Atomically increment the count of visible Gaussians
     let visible_idx = atomicAdd(&sort_infos.keys_size, 1u);
-
-    // Store in splat buffer compactly using visible index
-    splats[visible_idx].xy_x = pack2x16float(pos_ndc);
-    splats[visible_idx].xy_y = pack2x16float(quad_size);
-    splats[visible_idx].color = pack2x16float(color.xy);
-    splats[visible_idx].color_ba = pack2x16float(color.zw);
 
     // Store depth and index for sorting
     let depth_uint = bitcast<u32>(-pos_view.z);
     sort_depths[visible_idx] = depth_uint;
     sort_indices[visible_idx] = idx;
 
-    // Increment DispatchIndirect.dispatch_x each time visible count exceeds keys_per_dispatch
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
-    // When visible_idx crosses a boundary (e.g., goes from 255 to 256), increment dispatch
     if ((visible_idx + 1u) % keys_per_dispatch == 0u) {
         atomicAdd(&sort_dispatch.dispatch_x, 1u);
     }
