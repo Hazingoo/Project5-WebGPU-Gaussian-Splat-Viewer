@@ -8,6 +8,7 @@
 
 ### Live Demo
 
+Link: https://hazingoo.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/
 [![](img/thumb.png)](http://TODO.github.io/Project4-WebGPU-Forward-Plus-and-Clustered-Deferred)
 
 ### Demo Video/GIF
