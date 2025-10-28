@@ -153,6 +153,7 @@ export default function get_renderer(
         layout: render_pipeline.getBindGroupLayout(0),
         entries: [
             { binding: 0, resource: { buffer: splat_buffer } },
+            { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
         ],
     });
 
@@ -237,7 +238,7 @@ export default function get_renderer(
     return {
         frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
             preprocess(encoder);
-            // sorter.sort(encoder); 
+            sorter.sort(encoder);
             render(encoder, texture_view);
         },
         camera_buffer,
