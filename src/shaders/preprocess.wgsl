@@ -56,8 +56,8 @@ struct Gaussian {
 };
 
 struct Splat {
-    xy_x: u32,  
-    xy_y: u32,  // unused for now
+    xy_x: u32,        
+    xy_y: u32,       
 };
 
 // Bind group 0: Camera
@@ -69,6 +69,8 @@ var<uniform> camera: CameraUniforms;
 var<storage, read> gaussians: array<Gaussian>;
 @group(1) @binding(1)
 var<storage, read_write> splats: array<Splat>;
+@group(1) @binding(2)
+var<uniform> render_settings: RenderSettings;
 
 // Bind group 2: Sort data
 @group(2) @binding(0)
@@ -119,6 +121,110 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
     return  max(vec3<f32>(0.), result);
 }
 
+// Helper to unpack 4 f16 values from 2 u32
+fn unpack4x16float(a: u32, b: u32) -> vec4<f32> {
+    let xy = unpack2x16float(a);
+    let zw = unpack2x16float(b);
+    return vec4<f32>(xy.x, xy.y, zw.x, zw.y);
+}
+
+// Build rotation matrix from quaternion
+fn quat_to_mat(q: vec4<f32>) -> mat3x3<f32> {
+    // Normalize quaternion
+    let qn = normalize(q);
+    let x = qn.x;
+    let y = qn.y;
+    let z = qn.z;
+    let w = qn.w;
+    
+    // Compute rotation matrix from quaternion
+    let r00 = 1.0 - 2.0 * (y * y + z * z);
+    let r01 = 2.0 * (x * y - w * z);
+    let r02 = 2.0 * (x * z + w * y);
+    
+    let r10 = 2.0 * (x * y + w * z);
+    let r11 = 1.0 - 2.0 * (x * x + z * z);
+    let r12 = 2.0 * (y * z - w * x);
+    
+    let r20 = 2.0 * (x * z - w * y);
+    let r21 = 2.0 * (y * z + w * x);
+    let r22 = 1.0 - 2.0 * (x * x + y * y);
+    
+    return mat3x3<f32>(
+        vec3<f32>(r00, r10, r20),
+        vec3<f32>(r01, r11, r21),
+        vec3<f32>(r02, r12, r22)
+    );
+}
+
+fn compute_cov3d(scale: vec3<f32>, rot: vec4<f32>, gaussian_scaling: f32) -> mat3x3<f32> {
+    // Scale with user multiplier
+    let s = scale * gaussian_scaling;
+    
+    // Build rotation matrix
+    let R = quat_to_mat(rot);
+    
+    // Build scale matrix S 
+    let S = mat3x3<f32>(
+        vec3<f32>(s.x * s.x, 0.0, 0.0),
+        vec3<f32>(0.0, s.y * s.y, 0.0),
+        vec3<f32>(0.0, 0.0, s.z * s.z)
+    );
+    
+    // Compute covariance: R * S * R^T
+    let M = R * S;
+    let Sigma = M * transpose(R);
+    
+    return Sigma;
+}
+
+// Compute 2D covariance from 3D covariance
+// https://github.com/kwea123/gaussian_splatting_notes
+fn compute_cov2d(
+    pos_view: vec3<f32>,
+    cov3d: mat3x3<f32>,
+    focal: vec2<f32>,
+    viewport: vec2<f32>
+) -> vec3<f32> {
+    // Compute Jacobian of perspective projection
+    let z = pos_view.z;
+    let z2 = z * z;
+    let fx = focal.x;
+    let fy = focal.y;
+    
+    // Jacobian of projection
+    let J = mat3x2<f32>(
+        vec2<f32>(fx / z, 0.0),
+        vec2<f32>(0.0, fy / z),
+        vec2<f32>(-fx * pos_view.x / z2, -fy * pos_view.y / z2)
+    );
+    
+    // Compute 2D covariance;
+    let T = J * cov3d;  // 2x3 * 3x3 = 2x3
+    let cov2d_mat = T * transpose(J);  // 2x3 * 3x2 = 2x2
+    
+    return vec3<f32>(cov2d_mat[0][0], cov2d_mat[0][1], cov2d_mat[1][1]);
+}
+
+// Compute radius from 2D covariance
+fn compute_radius(cov2d: vec3<f32>) -> f32 {
+    let a = cov2d.x;
+    let b = cov2d.y;
+    let c = cov2d.z;
+    
+    // Eigenvalues of 2x2 symmetric matrix:
+    let mid = 0.5 * (a + c);
+    let det = sqrt(max(0.0, 0.25 * (a - c) * (a - c) + b * b));
+    let lambda1 = mid + det;
+    let lambda2 = mid - det;
+    
+    // Maximum eigenvalue
+    let max_eig = max(lambda1, lambda2);
+    
+    // Radius is 3 standard deviations
+    return 3.0 * sqrt(max(0.0, max_eig));
+}
+
 @compute @workgroup_size(workgroupSize,1,1)
 fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) wgs: vec3<u32>) {
     let idx = gid.x;
@@ -130,11 +236,22 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     
     // Read gaussian data
     let gaussian = gaussians[idx];
+    
+    // Unpack position
     let a = unpack2x16float(gaussian.pos_opacity[0]);
     let b = unpack2x16float(gaussian.pos_opacity[1]);
     let pos_world = vec4<f32>(a.x, a.y, b.x, 1.0);
     
-    // Transform to NDC space 
+    // Unpack rotation (quaternion)
+    let rot_packed = unpack4x16float(gaussian.rot[0], gaussian.rot[1]);
+    let rotation = vec4<f32>(rot_packed.x, rot_packed.y, rot_packed.z, rot_packed.w);
+    
+    // Unpack scale (in log space, need to exp)
+    let scale_packed = unpack2x16float(gaussian.scale[0]);
+    let scale_z = unpack2x16float(gaussian.scale[1]).x;
+    let scale = vec3<f32>(exp(scale_packed.x), exp(scale_packed.y), exp(scale_z));
+    
+    // Transform to view space
     let pos_view = camera.view * pos_world;
     let pos_clip = camera.proj * pos_view;
     let pos_ndc = pos_clip.xy / pos_clip.w;
@@ -146,9 +263,37 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         return;
     }
     
+    // Compute 3D covariance in world space
+    let cov3d_world = compute_cov3d(scale, rotation, render_settings.gaussian_scaling);
+    
+    // Transform covariance to view space
+    // Σ_view = W * Σ_world * W^T where W is upper 3x3 of view matrix
+    let W = mat3x3<f32>(
+        camera.view[0].xyz,
+        camera.view[1].xyz,
+        camera.view[2].xyz
+    );
+    let cov3d_view = W * cov3d_world * transpose(W);
+    
+    // Compute 2D covariance in screen space
+    let cov2d = compute_cov2d(pos_view.xyz, cov3d_view, camera.focal, camera.viewport);
+    
+    // Compute radius in pixels
+    let radius_pixels = compute_radius(cov2d);
+    
+    // Convert radius to NDC space 
+    // NDC is [-1, 1], viewport is in pixels
+    let radius_ndc = vec2<f32>(
+        radius_pixels / camera.viewport.x * 2.0,
+        radius_pixels / camera.viewport.y * 2.0
+    );
+    
+    // Quad size is 2 * radius (diameter)
+    let quad_size = radius_ndc * 2.0;
+    
     // Store in splat buffer
     splats[idx].xy_x = pack2x16float(pos_ndc);
-    splats[idx].xy_y = 0u; // Unused for now
+    splats[idx].xy_y = pack2x16float(quad_size);
     
     // Atomically increment the count of visible Gaussians
     let visible_idx = atomicAdd(&sort_infos.keys_size, 1u);

@@ -4,21 +4,12 @@ struct VertexOutput {
 };
 
 struct Splat {
-    // For now, just store NDC position for rendering
-    xy_x: u32,  // packed f16: xy position (x, y)
-    xy_y: u32,  // packed f16: unused for now
-};
-
-struct RenderSettings {
-    gaussian_scaling: f32,
-    sh_deg: f32,
+    xy_x: u32,  // packed f16: xy position (x, y) in NDC
+    xy_y: u32,  // packed f16: quad size (width, height) in NDC
 };
 
 @group(0) @binding(0)
 var<storage, read> splats: array<Splat>;
-
-@group(0) @binding(1)
-var<uniform> render_settings: RenderSettings;
 
 @vertex
 fn vs_main(
@@ -30,9 +21,7 @@ fn vs_main(
     // Read splat data
     let splat = splats[instance_idx];
     let center_ndc = unpack2x16float(splat.xy_x);
-    
-    // Define a small quad, scaled by gaussian_scaling
-    let quad_size = vec2<f32>(0.01, 0.01) * render_settings.gaussian_scaling;
+    let quad_size = unpack2x16float(splat.xy_y);
     
     // Generate quad vertices 
     // Triangle 1: 0,1,2  Triangle 2: 0,2,3

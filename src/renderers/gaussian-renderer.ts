@@ -99,6 +99,7 @@ export default function get_renderer(
         entries: [
             { binding: 0, resource: { buffer: pc.gaussian_3d_buffer } },
             { binding: 1, resource: { buffer: splat_buffer } },
+            { binding: 2, resource: { buffer: render_settings_buffer } },
         ],
     });
 
@@ -147,10 +148,9 @@ export default function get_renderer(
 
     const render_splat_bind_group = device.createBindGroup({
         label: 'render splats',
-        layout: render_pipeline.getBindGroupLayout(0), // Changed from 1 to 0
+        layout: render_pipeline.getBindGroupLayout(0),
         entries: [
             { binding: 0, resource: { buffer: splat_buffer } },
-            { binding: 1, resource: { buffer: render_settings_buffer } },
         ],
     });
 
