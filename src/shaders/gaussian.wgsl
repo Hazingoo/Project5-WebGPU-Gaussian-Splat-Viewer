@@ -1,11 +1,13 @@
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
-    //TODO: information passed from vertex shader to fragment shader
+    @location(0) color: vec4<f32>,
 };
 
 struct Splat {
-    xy_x: u32,  // packed f16: xy position (x, y) in NDC
-    xy_y: u32,  // packed f16: quad size (width, height) in NDC
+    xy_x: u32,     // xy position 
+    xy_y: u32,     // quad size 
+    color: u32,    // packed f16: color (r, g) for visualization
+    color_ba: u32, // packed f16: color (b, a) for visualization
 };
 
 @group(0) @binding(0)
@@ -38,10 +40,14 @@ fn vs_main(
     let pos_ndc = center_ndc + offset * quad_size;
     out.position = vec4<f32>(pos_ndc, 0.0, 1.0);
     
+    let color_rg = unpack2x16float(splat.color);
+    let color_ba = unpack2x16float(splat.color_ba);
+    out.color = vec4<f32>(color_rg.x, color_rg.y, color_ba.x, color_ba.y);
+    
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(1.);
+    return in.color;
 }
