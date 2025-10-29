@@ -36,6 +36,14 @@ export default function get_renderer(
 
     const nulling_data = new Uint32Array([0]);
 
+    const null_buffer = createBuffer(
+        device,
+        'null buffer',
+        4,
+        GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+        nulling_data
+    );
+
     // Indirect draw buffer: stores draw call parameters
     const indirect_draw_buffer = createBuffer(
         device,
@@ -141,11 +149,6 @@ export default function get_renderer(
         primitive: {
             topology: 'triangle-list',
         },
-        depthStencil: {
-            depthWriteEnabled: false,
-            depthCompare: 'less-equal',
-            format: 'depth24plus',
-        },
     });
 
 
@@ -159,23 +162,13 @@ export default function get_renderer(
         ],
     });
 
-    // Create depth texture for proper rendering order
-    const canvas = document.querySelector('canvas');
-    let depth_texture = device.createTexture({
-        size: [canvas.width, canvas.height],
-        format: 'depth24plus',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    });
-    let depth_texture_view = depth_texture.createView();
-
     // ===============================================
     //    Command Encoder Functions
     // ===============================================
 
     const preprocess = (encoder: GPUCommandEncoder) => {
-        // Reset sort info
-        device.queue.writeBuffer(sorter.sort_info_buffer, 0, nulling_data);
-        device.queue.writeBuffer(sorter.sort_dispatch_indirect_buffer, 0, nulling_data);
+        encoder.copyBufferToBuffer(null_buffer, 0, sorter.sort_info_buffer, 0, 4);
+        encoder.copyBufferToBuffer(null_buffer, 0, sorter.sort_dispatch_indirect_buffer, 0, 4);
 
         const pass = encoder.beginComputePass({ label: 'preprocess compute' });
         pass.setPipeline(preprocess_pipeline);
@@ -188,26 +181,9 @@ export default function get_renderer(
         const workgroup_count = Math.ceil(pc.num_points / workgroup_size);
         pass.dispatchWorkgroups(workgroup_count);
         pass.end();
-
-        encoder.copyBufferToBuffer(
-            sorter.sort_info_buffer, 0,  // source: keys_size at offset 0
-            indirect_draw_buffer, 4,      // destination: instanceCount at offset 4
-            4                              // size: 4 bytes (one u32)
-        );
     };
 
     const render = (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
-        // Recreate depth texture if canvas size changed
-        if (canvas.width !== depth_texture.width || canvas.height !== depth_texture.height) {
-            depth_texture.destroy();
-            depth_texture = device.createTexture({
-                size: [canvas.width, canvas.height],
-                format: 'depth24plus',
-                usage: GPUTextureUsage.RENDER_ATTACHMENT,
-            });
-            depth_texture_view = depth_texture.createView();
-        }
-
         const pass = encoder.beginRenderPass({
             label: 'gaussian render',
             colorAttachments: [{
@@ -216,12 +192,6 @@ export default function get_renderer(
                 storeOp: 'store',
                 clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
             }],
-            depthStencilAttachment: {
-                view: depth_texture_view,
-                depthClearValue: 1.0,
-                depthLoadOp: 'clear',
-                depthStoreOp: 'store',
-            },
         });
 
         pass.setPipeline(render_pipeline);
@@ -240,6 +210,13 @@ export default function get_renderer(
         frame: (encoder: GPUCommandEncoder, texture_view: GPUTextureView) => {
             preprocess(encoder);
             sorter.sort(encoder);
+
+            encoder.copyBufferToBuffer(
+                sorter.sort_info_buffer, 0,
+                indirect_draw_buffer, 4,
+                4
+            );
+
             render(encoder, texture_view);
         },
         camera_buffer,
