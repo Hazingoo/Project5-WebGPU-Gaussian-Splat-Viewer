@@ -257,7 +257,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     
     // View-frustum culling 
     let culling_bounds = 1.2;
-    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || pos_view.z < 0.0) {
+    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || pos_clip.w <= 0.0) {
         // Outside frustum or behind camera, skip this Gaussian
         return;
     }
@@ -284,7 +284,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         radius_pixels / camera.viewport.y * 2.0
     );
     
-    let quad_size = max(radius_ndc * 2.0, vec2<f32>(0.01, 0.01));
+    let quad_size = radius_ndc * 2.0;
     
     // Increment visible counter for this Gaussian 
     let visible_idx = atomicAdd(&sort_infos.keys_size, 1u);
