@@ -126,7 +126,7 @@ export default function get_renderer(
                 format: presentation_format,
                 blend: {
                     color: {
-                        srcFactor: 'one',
+                        srcFactor: 'src-alpha',
                         dstFactor: 'one-minus-src-alpha',
                         operation: 'add',
                     },
@@ -189,7 +189,6 @@ export default function get_renderer(
         pass.dispatchWorkgroups(workgroup_count);
         pass.end();
 
-        // Copy visible count from sort_infos.keys_size to indirect draw buffer's instance count
         encoder.copyBufferToBuffer(
             sorter.sort_info_buffer, 0,  // source: keys_size at offset 0
             indirect_draw_buffer, 4,      // destination: instanceCount at offset 4

@@ -11,7 +11,7 @@ struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec4<f32>,
     @location(1) conic: vec3<f32>,
-    @location(2) center_ndc: vec2<f32>,
+    @location(2) pixel_center: vec2<f32>,
 };
 
 struct Splat {
@@ -55,8 +55,6 @@ fn vs_main(
     let conic = vec3<f32>(conic_xy.x, conic_xy.y, conic_z_radius.x);
     
     // Generate quad vertices 
-    // Triangle 1: 0,1,2  Triangle 2: 0,2,3
-    // 0: bottom-left, 1: bottom-right, 2: top-right, 3: top-left
     var offset = vec2<f32>(0.0, 0.0);
     switch (vertex_idx) {
         case 0u, 3u: { offset = vec2<f32>(-1.0, -1.0); } // bottom-left
@@ -70,38 +68,30 @@ fn vs_main(
     out.position = vec4<f32>(pos_ndc, 0.0, 1.0);
     out.color = color;
     out.conic = conic;
-    out.center_ndc = center_ndc;
+    
+    // Convert NDC center to pixel coordinates for fragment shader
+    out.pixel_center = (center_ndc * vec2<f32>(0.5, -0.5) + 0.5) * camera.viewport;
     
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let center_pixel = vec2<f32>(
-        (in.center_ndc.x + 1.0) * 0.5 * camera.viewport.x,
-        (1.0 - in.center_ndc.y) * 0.5 * camera.viewport.y  
-    );
+    // Compute distance in pixel space
+    let d = in.position.xy - in.pixel_center;
     
-    let d = in.position.xy - center_pixel;
+    let power = -0.5 * (in.conic.x * d.x * d.x + in.conic.z * d.y * d.y) - in.conic.y * d.x * d.y;
     
-    let mahal_dist_sq = (
-        in.conic.x * d.x * d.x +
-        in.conic.z * d.y * d.y +
-        2.0 * in.conic.y * d.x * d.y
-    );
-    
-    let power = -0.5 * mahal_dist_sq;
-    
-    // Early discard for fragments too far from center
-    if (power < -3.125) {
+    // Discard fragments outside the Gaussian
+    if (power > 0.0) {
         discard;
     }
     
     let alpha = min(0.99, in.color.a * exp(power));
     
-    if (alpha < 0.005) {
+    if (alpha < 1.0 / 255.0) {
         discard;
     }
     
-    return vec4<f32>(in.color.rgb * alpha, alpha);
+    return vec4<f32>(in.color.rgb, alpha);
 }

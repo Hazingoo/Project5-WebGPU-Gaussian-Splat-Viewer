@@ -141,7 +141,6 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
     return clamp(result, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
-// Helper to unpack 4 f16 values from 2 u32
 fn unpack4x16float(a: u32, b: u32) -> vec4<f32> {
     let xy = unpack2x16float(a);
     let zw = unpack2x16float(b);
@@ -158,22 +157,10 @@ fn quat_to_mat(q: vec4<f32>) -> mat3x3<f32> {
     let w = qn.w;
     
     // Compute rotation matrix from quaternion
-    let r00 = 1.0 - 2.0 * (y * y + z * z);
-    let r01 = 2.0 * (x * y - w * z);
-    let r02 = 2.0 * (x * z + w * y);
-    
-    let r10 = 2.0 * (x * y + w * z);
-    let r11 = 1.0 - 2.0 * (x * x + z * z);
-    let r12 = 2.0 * (y * z - w * x);
-    
-    let r20 = 2.0 * (x * z - w * y);
-    let r21 = 2.0 * (y * z + w * x);
-    let r22 = 1.0 - 2.0 * (x * x + y * y);
-    
     return mat3x3<f32>(
-        vec3<f32>(r00, r10, r20),
-        vec3<f32>(r01, r11, r21),
-        vec3<f32>(r02, r12, r22)
+        1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y - w * z), 2.0 * (x * z + w * y),
+        2.0 * (x * y + w * z), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z - w * x),
+        2.0 * (x * z - w * y), 2.0 * (y * z + w * x), 1.0 - 2.0 * (x * x + y * y)
     );
 }
 
@@ -197,50 +184,65 @@ fn compute_cov3d(scale: vec3<f32>, rot: vec4<f32>, gaussian_scaling: f32) -> mat
 }
 
 // Compute 2D covariance from 3D covariance
-// https://github.com/kwea123/gaussian_splatting_notes
+// Based on EWA splatting: https://github.com/kwea123/gaussian_splatting_notes
 fn compute_cov2d(
     pos_view: vec3<f32>,
     cov3d_world: mat3x3<f32>,
     view_matrix: mat3x3<f32>,
     focal: vec2<f32>
 ) -> vec3<f32> {
+    // Transform 3D covariance to view space
+    let cov3d_view = view_matrix * cov3d_world * transpose(view_matrix);
+    
     let t = pos_view;
-    let tz2 = t.z * t.z;
+    let limx = 1.3 * camera.viewport.x;
+    let limy = 1.3 * camera.viewport.y;
+    let txtz = t.x / t.z;
+    let tytz = t.y / t.z;
+    
+    // Jacobian of perspective projection
     let J = mat3x3<f32>(
-        focal.x / t.z, 0.0, -(focal.x * t.x) / tz2,
-        0.0, focal.y / t.z, -(focal.y * t.y) / tz2,
+        focal.x / t.z, 0.0, -(focal.x * txtz) / t.z,
+        0.0, focal.y / t.z, -(focal.y * tytz) / t.z,
         0.0, 0.0, 0.0
     );
     
-    let W = transpose(view_matrix);
+    // Project to 2D: J * Cov3D_view * J^T
+    let T = J * cov3d_view;
+    let cov2d = mat3x3<f32>(
+        T[0][0] * J[0][0] + T[0][1] * J[0][1] + T[0][2] * J[0][2],
+        T[0][0] * J[1][0] + T[0][1] * J[1][1] + T[0][2] * J[1][2],
+        0.0,
+        T[1][0] * J[0][0] + T[1][1] * J[0][1] + T[1][2] * J[0][2],
+        T[1][0] * J[1][0] + T[1][1] * J[1][1] + T[1][2] * J[1][2],
+        0.0,
+        0.0, 0.0, 0.0
+    );
     
-    let T = W * J;
+    let cov_a = cov2d[0][0] + 0.3;
+    let cov_b = cov2d[0][1];
+    let cov_c = cov2d[1][1] + 0.3;
     
-    let Vrk = cov3d_world;
-    
-    // Compute 2D covariance: T^T * Vrk * T
-    var cov2d_mat = transpose(T) * Vrk * T;
-    
-    cov2d_mat[0][0] += 0.3;
-    cov2d_mat[1][1] += 0.3;
-    
-    return vec3<f32>(cov2d_mat[0][0], cov2d_mat[0][1], cov2d_mat[1][1]);
+    return vec3<f32>(cov_a, cov_b, cov_c);
 }
 
-// Compute radius from 2D covariance
 fn compute_radius(cov2d: vec3<f32>) -> f32 {
     let a = cov2d.x;
     let b = cov2d.y;
     let c = cov2d.z;
     
     // Calculate determinant
-    let det = a * c - b * b;
+    let det = max(0.0, a * c - b * b);
     
+    // Compute eigenvalues 
     let mid = 0.5 * (a + c);
-    let lambda1 = mid + sqrt(max(0.1, mid * mid - det));
-    let lambda2 = mid - sqrt(max(0.1, mid * mid - det));
+    let discriminant = max(0.0, mid * mid - det);
+    let lambda1 = mid + sqrt(discriminant);
+    let lambda2 = mid - sqrt(discriminant);
     
-    return ceil(3.0 * sqrt(max(lambda1, lambda2)));
+    // Radius is 3 sigma 
+    let max_lambda = max(lambda1, lambda2);
+    return ceil(3.0 * sqrt(max(0.1, max_lambda)));
 }
 
 @compute @workgroup_size(workgroupSize,1,1)
@@ -260,11 +262,10 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let b = unpack2x16float(gaussian.pos_opacity[1]);
     let pos_world = vec4<f32>(a.x, a.y, b.x, 1.0);
     
-    // Unpack rotation (quaternion)
-    let rot_packed = unpack4x16float(gaussian.rot[0], gaussian.rot[1]);
-    let rotation = vec4<f32>(rot_packed.x, rot_packed.y, rot_packed.z, rot_packed.w);
+    let rot_WX = unpack2x16float(gaussian.rot[0]); // W, X
+    let rot_YZ = unpack2x16float(gaussian.rot[1]); // Y, Z
+    let rotation = vec4<f32>(rot_WX.y, rot_YZ.x, rot_YZ.y, rot_WX.x); // Reorder to X, Y, Z, W
     
-    // Unpack scale (in log space, need to exp)
     let scale_packed = unpack2x16float(gaussian.scale[0]);
     let scale_z = unpack2x16float(gaussian.scale[1]).x;
     let scale = vec3<f32>(exp(scale_packed.x), exp(scale_packed.y), exp(scale_z));
@@ -284,14 +285,39 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // Compute 3D covariance in world space
     let cov3d_world = compute_cov3d(scale, rotation, render_settings.gaussian_scaling);
     
-    let view_matrix = mat3x3<f32>(
+    // Build Jacobian of perspective projection
+    let t = pos_view.xyz;
+    let J = mat3x3<f32>(
+        camera.focal.x / t.z, 0.0, -(camera.focal.x * t.x) / (t.z * t.z),
+        0.0, camera.focal.y / t.z, -(camera.focal.y * t.y) / (t.z * t.z),
+        0.0, 0.0, 0.0
+    );
+    
+    // Extract view matrix rotation 
+    let W = transpose(mat3x3<f32>(
         camera.view[0].xyz,
         camera.view[1].xyz,
         camera.view[2].xyz
+    ));
+    
+    // Combine transformations
+    let T = W * J;
+    
+    let V = mat3x3<f32>(
+        cov3d_world[0][0], cov3d_world[0][1], cov3d_world[0][2],
+        cov3d_world[0][1], cov3d_world[1][1], cov3d_world[1][2],
+        cov3d_world[0][2], cov3d_world[1][2], cov3d_world[2][2]
     );
     
-    // Compute 2D covariance in screen space
-    let cov2d = compute_cov2d(pos_view.xyz, cov3d_world, view_matrix, camera.focal);
+    var cov2d_mat = transpose(T) * transpose(V) * T;
+    cov2d_mat[0][0] += 0.3;
+    cov2d_mat[1][1] += 0.3;
+    
+    let cov2d = vec3<f32>(
+        cov2d_mat[0][0],
+        cov2d_mat[0][1],
+        cov2d_mat[1][1]
+    );
     
     let det = cov2d.x * cov2d.z - cov2d.y * cov2d.y;
     
@@ -307,17 +333,16 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         cov2d.x * det_inv   
     );
     
-    // Compute radius in pixels from eigenvalues
     let radius_pixels = compute_radius(cov2d);
     
     let quad_size_ndc = vec2<f32>(
-        radius_pixels / camera.viewport.x * 2.0,
-        radius_pixels / camera.viewport.y * 2.0
+        radius_pixels / camera.viewport.x,
+        radius_pixels / camera.viewport.y
     );
     
     // Compute color from spherical harmonics
-    let cam_pos = vec3<f32>(camera.view_inv[3].x, camera.view_inv[3].y, camera.view_inv[3].z);
-    let view_dir = normalize(cam_pos - vec3<f32>(pos_world.x, pos_world.y, pos_world.z));
+    let cam_pos = camera.view_inv[3].xyz;
+    let view_dir = normalize(vec3<f32>(pos_world.x, pos_world.y, pos_world.z) - cam_pos);
     let color = computeColorFromSH(view_dir, idx, u32(render_settings.sh_deg));
     
     // Unpack opacity 
@@ -335,14 +360,10 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     splats[visible_idx].conic_xy = pack2x16float(vec2<f32>(conic.x, conic.y));
     splats[visible_idx].conic_z_radius = pack2x16float(vec2<f32>(conic.z, radius_pixels));
 
-    // Store depth and index for sorting (back-to-front)
-    // Use negative view space z for back-to-front ordering
-    var depth_uint = bitcast<u32>(-pos_view.z);
-    // Flip bits for radix sort to handle signed floats correctly
-    // If sign bit is set (negative), flip all bits
-    // If sign bit is not set (positive), flip only sign bit
-    let mask = select(0x80000000u, 0xFFFFFFFFu, (depth_uint & 0x80000000u) != 0u);
-    sort_depths[visible_idx] = depth_uint ^ mask;
+    let depth_uint = bitcast<u32>(-pos_view.z);
+    let is_negative = (depth_uint & 0x80000000u) != 0u;
+    let flipped = select(depth_uint ^ 0x80000000u, ~depth_uint, is_negative);
+    sort_depths[visible_idx] = flipped;
     sort_indices[visible_idx] = visible_idx;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
