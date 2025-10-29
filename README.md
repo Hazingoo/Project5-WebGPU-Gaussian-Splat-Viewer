@@ -44,6 +44,8 @@ All these semi-transparent splats are blended together using standard transparen
 
 ### Performance analysis
 
+The point cloud
+
 ### Credits
 
 - [Vite](https://vitejs.dev/)

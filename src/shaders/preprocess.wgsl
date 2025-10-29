@@ -276,8 +276,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_ndc = pos_clip.xy / pos_clip.w;
     
     let culling_bounds = 1.2;
-    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || pos_clip.w <= 0.001) {
-        // Outside frustum or behind camera, skip this Gaussian
+    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || pos_clip.w <= 0.0) {
         return;
     }
     
@@ -352,10 +351,6 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let opacity_raw = b.y;
     let opacity = clamp(1.0 / (1.0 + exp(-opacity_raw)), 0.0, 0.99);
     
-    if (opacity < 0.01) {
-        return;
-    }
-    
     // Increment visible counter for this Gaussian 
     let visible_idx = atomicAdd(&sort_infos.keys_size, 1u);
     
@@ -367,10 +362,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     splats[visible_idx].conic_xy = pack2x16float(vec2<f32>(conic.x, conic.y));
     splats[visible_idx].conic_z_radius = pack2x16float(vec2<f32>(conic.z, radius_pixels));
 
-    let depth_uint = bitcast<u32>(-pos_view.z);
-    let is_negative = (depth_uint & 0x80000000u) != 0u;
-    let flipped = select(depth_uint ^ 0x80000000u, ~depth_uint, is_negative);
-    sort_depths[visible_idx] = flipped;
+    sort_depths[visible_idx] = bitcast<u32>(100.0 - pos_view.z);
     sort_indices[visible_idx] = visible_idx;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
