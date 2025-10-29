@@ -57,7 +57,11 @@ struct Gaussian {
 
 struct Splat {
     xy_x: u32,        
-    xy_y: u32,       
+    xy_y: u32,
+    color: u32,
+    color_ba: u32,
+    conic_xy: u32,    
+    conic_z_radius: u32, 
 };
 
 // Bind group 0: Camera
@@ -70,6 +74,8 @@ var<storage, read> gaussians: array<Gaussian>;
 @group(1) @binding(1)
 var<storage, read_write> splats: array<Splat>;
 @group(1) @binding(2)
+var<storage, read> sh_coeffs: array<u32>;
+@group(1) @binding(3)
 var<uniform> render_settings: RenderSettings;
 
 // Bind group 2: Sort data
@@ -84,8 +90,22 @@ var<storage, read_write> sort_dispatch: DispatchIndirect;
 
 /// reads the ith sh coef from the storage buffer 
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
-    //TODO: access your binded sh_coeff, see load.ts for how it is stored
-    return vec3<f32>(0.0);
+    let base_f16_idx = splat_idx * 48u;
+    
+    let coef_f16_idx = base_f16_idx + c_idx * 3u;
+    
+    let u32_idx = coef_f16_idx / 2u;
+    
+    let rg_packed = unpack2x16float(sh_coeffs[u32_idx]);      
+    let b_next_packed = unpack2x16float(sh_coeffs[u32_idx + 1u]); 
+    
+    let is_even = (coef_f16_idx % 2u) == 0u;
+    
+    let r = select(rg_packed.y, rg_packed.x, is_even);
+    let g = select(b_next_packed.x, rg_packed.y, is_even);
+    let b = select(b_next_packed.y, b_next_packed.x, is_even);
+    
+    return vec3<f32>(r, g, b);
 }
 
 // spherical harmonics evaluation with Condon–Shortley phase
@@ -118,7 +138,7 @@ fn computeColorFromSH(dir: vec3<f32>, v_idx: u32, sh_deg: u32) -> vec3<f32> {
     }
     result += 0.5;
 
-    return  max(vec3<f32>(0.), result);
+    return clamp(result, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
 // Helper to unpack 4 f16 values from 2 u32
@@ -201,7 +221,6 @@ fn compute_cov2d(
     // Compute 2D covariance: T^T * Vrk * T
     var cov2d_mat = transpose(T) * Vrk * T;
     
-    // Add regularization for numerical stability 
     cov2d_mat[0][0] += 0.3;
     cov2d_mat[1][1] += 0.3;
     
@@ -274,24 +293,47 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // Compute 2D covariance in screen space
     let cov2d = compute_cov2d(pos_view.xyz, cov3d_world, view_matrix, camera.focal);
     
-    // Compute radius in pixels
+    let det = cov2d.x * cov2d.z - cov2d.y * cov2d.y;
+    
+    if (det <= 0.0) {
+        return;
+    }
+    
+    // Compute conic 
+    let det_inv = 1.0 / det;
+    let conic = vec3<f32>(
+        cov2d.z * det_inv,  
+        -cov2d.y * det_inv, 
+        cov2d.x * det_inv   
+    );
+    
+    // Compute radius in pixels from eigenvalues
     let radius_pixels = compute_radius(cov2d);
     
-    // Convert radius to NDC space 
-    // NDC is [-1, 1], viewport is in pixels
-    let radius_ndc = vec2<f32>(
+    let quad_size_ndc = vec2<f32>(
         radius_pixels / camera.viewport.x * 2.0,
         radius_pixels / camera.viewport.y * 2.0
     );
     
-    let quad_size = radius_ndc * 2.0;
+    // Compute color from spherical harmonics
+    let cam_pos = vec3<f32>(camera.view_inv[3].x, camera.view_inv[3].y, camera.view_inv[3].z);
+    let view_dir = normalize(cam_pos - vec3<f32>(pos_world.x, pos_world.y, pos_world.z));
+    let color = computeColorFromSH(view_dir, idx, u32(render_settings.sh_deg));
+    
+    // Unpack opacity 
+    let opacity_raw = b.y;
+    let opacity = clamp(1.0 / (1.0 + exp(-opacity_raw)), 0.0, 0.99);
     
     // Increment visible counter for this Gaussian 
     let visible_idx = atomicAdd(&sort_infos.keys_size, 1u);
     
     // Store in splat buffer at compacted visible index
     splats[visible_idx].xy_x = pack2x16float(pos_ndc);
-    splats[visible_idx].xy_y = pack2x16float(quad_size);
+    splats[visible_idx].xy_y = pack2x16float(quad_size_ndc);
+    splats[visible_idx].color = pack2x16float(vec2<f32>(color.r, color.g));
+    splats[visible_idx].color_ba = pack2x16float(vec2<f32>(color.b, opacity));
+    splats[visible_idx].conic_xy = pack2x16float(vec2<f32>(conic.x, conic.y));
+    splats[visible_idx].conic_z_radius = pack2x16float(vec2<f32>(conic.z, radius_pixels));
 
     // Store depth and index for sorting (back-to-front)
     // Use negative view space z for back-to-front ordering

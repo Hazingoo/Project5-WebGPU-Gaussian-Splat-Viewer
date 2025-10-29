@@ -49,7 +49,7 @@ export default function get_renderer(
     const splat_buffer = createBuffer(
         device,
         'splat buffer',
-        pc.num_points * 32, // 32 bytes per splat (8 floats: pos xy, color rgb, conic abc)
+        pc.num_points * 24,
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
 
@@ -101,7 +101,8 @@ export default function get_renderer(
         entries: [
             { binding: 0, resource: { buffer: pc.gaussian_3d_buffer } },
             { binding: 1, resource: { buffer: splat_buffer } },
-            { binding: 2, resource: { buffer: render_settings_buffer } },
+            { binding: 2, resource: { buffer: pc.sh_buffer } },
+            { binding: 3, resource: { buffer: render_settings_buffer } },
         ],
     });
 
@@ -154,6 +155,7 @@ export default function get_renderer(
         entries: [
             { binding: 0, resource: { buffer: splat_buffer } },
             { binding: 1, resource: { buffer: sorter.ping_pong[0].sort_indices_buffer } },
+            { binding: 2, resource: { buffer: camera_buffer } },
         ],
     });
 
