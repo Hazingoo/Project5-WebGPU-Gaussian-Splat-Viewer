@@ -3,17 +3,32 @@
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 5**
 
 * Harry Guan
-* Tested on: (TODO) **Google Chrome 222.2** on
-  Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* Tested on: **Google Chrome 141** on
+Windows 11, Intel i7-14700 @ 2.10GHz 32GB, NVIDIA T1000 4GB (Moore 100B virtual labs)
 
 ### Live Demo
 
-Link: https://hazingoo.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/
-[![](img/thumb.png)](http://TODO.github.io/Project4-WebGPU-Forward-Plus-and-Clustered-Deferred)
+[![](images/bicycle_main.png)](https://hazingoo.github.io/Project5-WebGPU-Gaussian-Splat-Viewer/)
 
 ### Demo Video/GIF
 
-[![](img/video.mp4)](TODO)
+[![](images/video.gif)]()
+
+### Results
+
+Side‑by‑side: raw point cloud vs. Gaussian splats.
+
+**Bicycle**
+
+| Point Cloud | Gaussian Splats |
+| --- | --- |
+| ![](images/bicycle_cloud.png) | ![](images/bicycle_gaussian.png) |
+
+**Bonsai**
+
+| Point Cloud | Gaussian Splats |
+| --- | --- |
+| ![](images/bonsai_cloud.png) | ![](images/bonsai_gaussian.png) |
 
 ## Description
 I implemented a 3D scene viewer that uses a technique based on the paper "3D Gaussian Splatting for Real-Time Radiance Field Rendering" to render beautiful, realistic scenes in your web browser. Unlike traditional 3D rendering that uses polygons, Gaussian Splatting represents every piece of a scene as a cloud of many tiny, colored points that blur together to create smooth surfaces and lighting effects. The viewer loads 3D scenes (saved as PLY files) and lets you navigate around them, rotating and zooming in real-time to explore objects like bonsai trees, bicycles. You can adjust how the points are displayed and switch between different visualization modes to see both the raw point cloud data and the final beautiful splat rendering. 
@@ -42,9 +57,23 @@ The fragment shader determines what each pixel of the quad should look like. It 
 All these semi-transparent splats are blended together using standard transparency blending, which combines the colors and opacities of overlapping splats in the correct way.
 
 
-### Performance analysis
+## Performance analysis
 
-The point cloud
+### Compare your results from point-cloud and gaussian renderer, what are the differences?
+
+ The point‑cloud view looks grainy and full of tiny gaps. The Gaussian renderer blends those points into smooth, continuous surfaces with cleaner edges and more natural shading. So the overall image looks closer to a photo.
+
+### For gaussian renderer, how does changing the workgroup-size affect performance? Why do you think this is?
+
+ Small workgroups underuse the GPU and run slower. Very large ones don’t help much and can even hurt. Because overly large groups increase register/shared memory pressure and reduce how many groups can run in parallel.
+
+###  Does view-frustum culling give performance improvement? Why do you think this is? 
+
+ Yes, it helps. When I point the camera so a lot of the scene is off‑screen, frame rate noticeably improves because we skip preprocessing, sorting, and drawing those splats. You feel it most when zoomed in on a small part of the scene.
+
+### Does number of guassians affect performance?  Why do you think this is? 
+
+More Gaussians means more work almost everywhere (preprocess, sort, and blending). Performance scales roughly with how many are visible. Large scenes still run, but the sort and memory bandwidth start to dominate.
 
 ### Credits
 
