@@ -196,13 +196,10 @@ fn compute_cov2d(
     
     let T = W * J;
     
-    let Vrk = mat3x3<f32>(
-        vec3<f32>(cov3d_world[0][0], cov3d_world[0][1], cov3d_world[0][2]),
-        vec3<f32>(cov3d_world[0][1], cov3d_world[1][1], cov3d_world[1][2]),
-        vec3<f32>(cov3d_world[0][2], cov3d_world[1][2], cov3d_world[2][2])
-    );
+    let Vrk = cov3d_world;
     
-    var cov2d_mat = transpose(T) * transpose(Vrk) * T;
+    // Compute 2D covariance: T^T * Vrk * T
+    var cov2d_mat = transpose(T) * Vrk * T;
     
     // Add regularization for numerical stability 
     cov2d_mat[0][0] += 0.3;
@@ -287,8 +284,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         radius_pixels / camera.viewport.y * 2.0
     );
     
-    // Quad size is 2 * radius (diameter)
-    let quad_size = radius_ndc * 2.0;
+    let quad_size = max(radius_ndc * 2.0, vec2<f32>(0.01, 0.01));
     
     // Increment visible counter for this Gaussian 
     let visible_idx = atomicAdd(&sort_infos.keys_size, 1u);
@@ -297,9 +293,14 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     splats[visible_idx].xy_x = pack2x16float(pos_ndc);
     splats[visible_idx].xy_y = pack2x16float(quad_size);
 
-    // Store depth and index for sorting 
-    let depth_norm = pos_clip.z / pos_clip.w; 
-    sort_depths[visible_idx] = bitcast<u32>(depth_norm);
+    // Store depth and index for sorting (back-to-front)
+    // Use negative view space z for back-to-front ordering
+    var depth_uint = bitcast<u32>(-pos_view.z);
+    // Flip bits for radix sort to handle signed floats correctly
+    // If sign bit is set (negative), flip all bits
+    // If sign bit is not set (positive), flip only sign bit
+    let mask = select(0x80000000u, 0xFFFFFFFFu, (depth_uint & 0x80000000u) != 0u);
+    sort_depths[visible_idx] = depth_uint ^ mask;
     sort_indices[visible_idx] = visible_idx;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 

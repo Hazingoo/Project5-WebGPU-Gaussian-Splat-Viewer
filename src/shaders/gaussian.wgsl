@@ -40,7 +40,7 @@ fn vs_main(
     
     let pos_ndc = center_ndc + offset * quad_size;
     out.position = vec4<f32>(pos_ndc, 0.0, 1.0);
-    out.color = vec4<f32>(quad_size.x, quad_size.y, 0.0, 1.0);
+    out.color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
     
     return out;
 }
