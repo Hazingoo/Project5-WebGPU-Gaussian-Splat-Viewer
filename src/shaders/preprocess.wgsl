@@ -275,9 +275,8 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_clip = camera.proj * pos_view;
     let pos_ndc = pos_clip.xy / pos_clip.w;
     
-    // View-frustum culling 
     let culling_bounds = 1.2;
-    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || pos_clip.w <= 0.0) {
+    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || pos_clip.w <= 0.001) {
         // Outside frustum or behind camera, skip this Gaussian
         return;
     }
@@ -321,7 +320,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     
     let det = cov2d.x * cov2d.z - cov2d.y * cov2d.y;
     
-    if (det <= 0.0) {
+    if (det <= 0.000001) {
         return;
     }
     
@@ -332,6 +331,10 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         -cov2d.y * det_inv, 
         cov2d.x * det_inv   
     );
+    
+    if (abs(conic.x) > 10000.0 || abs(conic.y) > 10000.0 || abs(conic.z) > 10000.0) {
+        return;
+    }
     
     let radius_pixels = compute_radius(cov2d);
     
@@ -348,6 +351,10 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // Unpack opacity 
     let opacity_raw = b.y;
     let opacity = clamp(1.0 / (1.0 + exp(-opacity_raw)), 0.0, 0.99);
+    
+    if (opacity < 0.01) {
+        return;
+    }
     
     // Increment visible counter for this Gaussian 
     let visible_idx = atomicAdd(&sort_infos.keys_size, 1u);

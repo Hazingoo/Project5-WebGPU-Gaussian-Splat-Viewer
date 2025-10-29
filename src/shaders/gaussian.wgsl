@@ -89,7 +89,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     let alpha = min(0.99, in.color.a * exp(power));
     
-    if (alpha < 1.0 / 255.0) {
+    if (alpha < 0.004) {
         discard;
     }
     

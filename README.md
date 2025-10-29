@@ -42,6 +42,8 @@ The fragment shader determines what each pixel of the quad should look like. It 
 All these semi-transparent splats are blended together using standard transparency blending, which combines the colors and opacities of overlapping splats in the correct way.
 
 
+### Performance analysis
+
 ### Credits
 
 - [Vite](https://vitejs.dev/)
