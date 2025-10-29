@@ -319,7 +319,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     
     let det = cov2d.x * cov2d.z - cov2d.y * cov2d.y;
     
-    if (det <= 0.000001) {
+    if (det <= 0.0) {
         return;
     }
     
@@ -331,9 +331,6 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         cov2d.x * det_inv   
     );
     
-    if (abs(conic.x) > 10000.0 || abs(conic.y) > 10000.0 || abs(conic.z) > 10000.0) {
-        return;
-    }
     
     let radius_pixels = compute_radius(cov2d);
     
