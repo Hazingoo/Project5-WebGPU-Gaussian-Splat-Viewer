@@ -11,6 +11,9 @@ struct Splat {
 @group(0) @binding(0)
 var<storage, read> splats: array<Splat>;
 
+@group(0) @binding(1)
+var<storage, read> sort_indices: array<u32>;
+
 @vertex
 fn vs_main(
     @builtin(vertex_index) vertex_idx: u32,
@@ -18,8 +21,8 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
     
-    // Read splat data
-    let splat = splats[instance_idx];
+    let splat_idx = sort_indices[instance_idx];
+    let splat = splats[splat_idx];
     let center_ndc = unpack2x16float(splat.xy_x);
     let quad_size = unpack2x16float(splat.xy_y);
     

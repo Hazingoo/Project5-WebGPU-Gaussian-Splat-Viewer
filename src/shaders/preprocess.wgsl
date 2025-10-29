@@ -164,16 +164,14 @@ fn compute_cov3d(scale: vec3<f32>, rot: vec4<f32>, gaussian_scaling: f32) -> mat
     // Build rotation matrix
     let R = quat_to_mat(rot);
     
-    // Build scale matrix S 
     let S = mat3x3<f32>(
-        vec3<f32>(s.x * s.x, 0.0, 0.0),
-        vec3<f32>(0.0, s.y * s.y, 0.0),
-        vec3<f32>(0.0, 0.0, s.z * s.z)
+        vec3<f32>(s.x, 0.0, 0.0),
+        vec3<f32>(0.0, s.y, 0.0),
+        vec3<f32>(0.0, 0.0, s.z)
     );
     
-    // Compute covariance: R * S * R^T
-    let M = R * S;
-    let Sigma = M * transpose(R);
+    let M = S * R;
+    let Sigma = transpose(M) * M;
     
     return Sigma;
 }
@@ -182,26 +180,33 @@ fn compute_cov3d(scale: vec3<f32>, rot: vec4<f32>, gaussian_scaling: f32) -> mat
 // https://github.com/kwea123/gaussian_splatting_notes
 fn compute_cov2d(
     pos_view: vec3<f32>,
-    cov3d: mat3x3<f32>,
-    focal: vec2<f32>,
-    viewport: vec2<f32>
+    cov3d_world: mat3x3<f32>,
+    view_matrix: mat3x3<f32>,
+    focal: vec2<f32>
 ) -> vec3<f32> {
-    // Compute Jacobian of perspective projection
-    let z = pos_view.z;
-    let z2 = z * z;
-    let fx = focal.x;
-    let fy = focal.y;
-    
-    // Jacobian of projection
-    let J = mat3x2<f32>(
-        vec2<f32>(fx / z, 0.0),
-        vec2<f32>(0.0, fy / z),
-        vec2<f32>(-fx * pos_view.x / z2, -fy * pos_view.y / z2)
+    let t = pos_view;
+    let tz2 = t.z * t.z;
+    let J = mat3x3<f32>(
+        focal.x / t.z, 0.0, -(focal.x * t.x) / tz2,
+        0.0, focal.y / t.z, -(focal.y * t.y) / tz2,
+        0.0, 0.0, 0.0
     );
     
-    // Compute 2D covariance;
-    let T = J * cov3d;  // 2x3 * 3x3 = 2x3
-    let cov2d_mat = T * transpose(J);  // 2x3 * 3x2 = 2x2
+    let W = transpose(view_matrix);
+    
+    let T = W * J;
+    
+    let Vrk = mat3x3<f32>(
+        vec3<f32>(cov3d_world[0][0], cov3d_world[0][1], cov3d_world[0][2]),
+        vec3<f32>(cov3d_world[0][1], cov3d_world[1][1], cov3d_world[1][2]),
+        vec3<f32>(cov3d_world[0][2], cov3d_world[1][2], cov3d_world[2][2])
+    );
+    
+    var cov2d_mat = transpose(T) * transpose(Vrk) * T;
+    
+    // Add regularization for numerical stability 
+    cov2d_mat[0][0] += 0.3;
+    cov2d_mat[1][1] += 0.3;
     
     return vec3<f32>(cov2d_mat[0][0], cov2d_mat[0][1], cov2d_mat[1][1]);
 }
@@ -212,17 +217,14 @@ fn compute_radius(cov2d: vec3<f32>) -> f32 {
     let b = cov2d.y;
     let c = cov2d.z;
     
-    // Eigenvalues of 2x2 symmetric matrix:
+    // Calculate determinant
+    let det = a * c - b * b;
+    
     let mid = 0.5 * (a + c);
-    let det = sqrt(max(0.0, 0.25 * (a - c) * (a - c) + b * b));
-    let lambda1 = mid + det;
-    let lambda2 = mid - det;
+    let lambda1 = mid + sqrt(max(0.1, mid * mid - det));
+    let lambda2 = mid - sqrt(max(0.1, mid * mid - det));
     
-    // Maximum eigenvalue
-    let max_eig = max(lambda1, lambda2);
-    
-    // Radius is 3 standard deviations
-    return 3.0 * sqrt(max(0.0, max_eig));
+    return ceil(3.0 * sqrt(max(lambda1, lambda2)));
 }
 
 @compute @workgroup_size(workgroupSize,1,1)
@@ -258,25 +260,22 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     
     // View-frustum culling 
     let culling_bounds = 1.2;
-    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || pos_clip.w <= 0.0) {
-        // Outside frustum, skip this Gaussian
+    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || pos_view.z < 0.0) {
+        // Outside frustum or behind camera, skip this Gaussian
         return;
     }
     
     // Compute 3D covariance in world space
     let cov3d_world = compute_cov3d(scale, rotation, render_settings.gaussian_scaling);
     
-    // Transform covariance to view space
-    // Σ_view = W * Σ_world * W^T where W is upper 3x3 of view matrix
-    let W = mat3x3<f32>(
+    let view_matrix = mat3x3<f32>(
         camera.view[0].xyz,
         camera.view[1].xyz,
         camera.view[2].xyz
     );
-    let cov3d_view = W * cov3d_world * transpose(W);
     
     // Compute 2D covariance in screen space
-    let cov2d = compute_cov2d(pos_view.xyz, cov3d_view, camera.focal, camera.viewport);
+    let cov2d = compute_cov2d(pos_view.xyz, cov3d_world, view_matrix, camera.focal);
     
     // Compute radius in pixels
     let radius_pixels = compute_radius(cov2d);
@@ -291,15 +290,17 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // Quad size is 2 * radius (diameter)
     let quad_size = radius_ndc * 2.0;
     
-    // Store in splat buffer
-    splats[idx].xy_x = pack2x16float(pos_ndc);
-    splats[idx].xy_y = pack2x16float(quad_size);
-
+    // Increment visible counter for this Gaussian 
     let visible_idx = atomicAdd(&sort_infos.keys_size, 1u);
+    
+    // Store in splat buffer at compacted visible index
+    splats[visible_idx].xy_x = pack2x16float(pos_ndc);
+    splats[visible_idx].xy_y = pack2x16float(quad_size);
 
+    // Store depth and index for sorting 
     let depth_norm = pos_clip.z / pos_clip.w; 
     sort_depths[visible_idx] = bitcast<u32>(depth_norm);
-    sort_indices[visible_idx] = idx;
+    sort_indices[visible_idx] = visible_idx;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
     let new_count = visible_idx + 1u;
