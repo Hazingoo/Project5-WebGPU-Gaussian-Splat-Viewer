@@ -276,7 +276,9 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_ndc = pos_clip.xy / pos_clip.w;
     
     let culling_bounds = 1.2;
-    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || pos_clip.w <= 0.0) {
+    let ndc_z = pos_clip.z / pos_clip.w;
+    if (abs(pos_ndc.x) > culling_bounds || abs(pos_ndc.y) > culling_bounds || 
+        ndc_z < -1.0 || ndc_z > 1.0 || pos_clip.w <= 0.0) {
         return;
     }
     
@@ -339,9 +341,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         radius_pixels / camera.viewport.y
     );
     
-    // Compute color from spherical harmonics
-    let cam_pos = camera.view_inv[3].xyz;
-    let view_dir = normalize(vec3<f32>(pos_world.x, pos_world.y, pos_world.z) - cam_pos);
+    let view_dir = normalize(pos_view.xyz);
     let color = computeColorFromSH(view_dir, idx, u32(render_settings.sh_deg));
     
     // Unpack opacity 
@@ -363,8 +363,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     sort_indices[visible_idx] = visible_idx;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread; 
-    let new_count = visible_idx + 1u;
-    if (new_count % keys_per_dispatch == 0u) {
+    if (visible_idx % keys_per_dispatch == 0u) {
         atomicAdd(&sort_dispatch.dispatch_x, 1u);
     }
 }
